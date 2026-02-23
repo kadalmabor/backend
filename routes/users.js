@@ -3,16 +3,16 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const Student = require('../models/Student');
-const { adminMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware, adminMiddleware } = require('../middleware/authMiddleware');
 const { adminLimiter } = require('../middleware/rateLimiter');
 const { AppError } = require('../middleware/errorHandler');
 
 /**
  * @route   POST /api/users/create
  * @desc    Create a new user (Student)
- * @access  Admin only
+ * @access  Admin only (token + role admin required)
  */
-router.post('/create', adminLimiter, adminMiddleware, [
+router.post('/create', adminLimiter, authMiddleware, adminMiddleware, [
     body('studentId')
         .trim()
         .notEmpty()

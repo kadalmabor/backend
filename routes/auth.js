@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const Student = require('../models/Student');
+const Admin = require('../models/Admin');
 const { generateToken, generateRefreshToken } = require('../utils/jwt');
 const { AppError } = require('../middleware/errorHandler');
 const { authLimiter } = require('../middleware/rateLimiter');
@@ -37,12 +38,16 @@ router.post('/login', authLimiter, [
 
         const { username, password } = req.body;
 
-        // 1. Check for Admin
-        if (username === process.env.ADMIN_USERNAME) {
-            if (password === process.env.ADMIN_PASSWORD) {
+        const Admin = require('../models/Admin');
+
+        // 1. Check for Admin in Database
+        const adminUser = await Admin.findOne({ username });
+        if (adminUser) {
+            const isMatch = await bcrypt.compare(password, adminUser.password);
+            if (isMatch) {
                 const payload = {
-                    id: 'admin',
-                    username: process.env.ADMIN_USERNAME,
+                    id: adminUser._id.toString(),
+                    username: adminUser.username,
                     role: 'admin'
                 };
 
@@ -54,9 +59,10 @@ router.post('/login', authLimiter, [
                     token,
                     refreshToken,
                     role: 'admin',
-                    username: process.env.ADMIN_USERNAME
+                    username: adminUser.username
                 });
             } else {
+                // Found admin username but wrong password
                 throw new AppError('Invalid credentials', 401);
             }
         }

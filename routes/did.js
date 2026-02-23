@@ -3,7 +3,7 @@ const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
 const { ethers } = require('ethers');
 const Student = require('../models/Student');
-const { authMiddleware } = require('../middleware/authMiddleware');
+const { authMiddleware, userMiddleware } = require('../middleware/authMiddleware');
 const { didLimiter } = require('../middleware/rateLimiter');
 const { AppError } = require('../middleware/errorHandler');
 const {
@@ -17,9 +17,9 @@ const {
 /**
  * @route   POST /api/did/bind
  * @desc    Bind wallet to student ID and issue VC
- * @access  Private (User)
+ * @access  Private (student only; token + role user required)
  */
-router.post('/bind', didLimiter, authMiddleware, [
+router.post('/bind', didLimiter, authMiddleware, userMiddleware, [
     body('userAddress')
         .notEmpty()
         .withMessage('Wallet address is required')
@@ -105,9 +105,9 @@ router.post('/bind', didLimiter, authMiddleware, [
 /**
  * @route   GET /api/did/status/:address
  * @desc    Check wallet binding status
- * @access  Public
+ * @access  Private: user can only check own binding (or unbound); admin can check any address
  */
-router.get('/status/:address', [
+router.get('/status/:address', authMiddleware, [
     param('address')
         .notEmpty()
         .withMessage('Address parameter is required')
@@ -130,11 +130,51 @@ router.get('/status/:address', [
             claimedBy: { $regex: new RegExp(`^${normalizedAddress}$`, 'i') }
         });
 
+        // Non-admin users may only check status for an address bound to their own studentId (or unbound)
+        if (req.user.role !== 'admin' && student && student.studentId !== req.user.studentId) {
+            throw new AppError('You may only check binding status for your own wallet', 403);
+        }
+
         if (student) {
+            let nftClaimed = false;
+            let vc = null;
+            let vcJwt = null;
+
+            try {
+                // Check NFT balance
+                const VotingSystemArtifact = require('../../frontend/src/contracts/VotingSystem.json');
+                const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
+                const nftContract = new ethers.Contract(process.env.VOTING_SYSTEM_ADDRESS, VotingSystemArtifact.abi, provider);
+
+                // Get balance strictly for this address
+                const balance = await nftContract.balanceOf(normalizedAddress);
+                if (balance > 0) {
+                    nftClaimed = true;
+                }
+            } catch (e) {
+                console.error("[Status Check] Error checking NFT balance:", e.message);
+                // Proceed without crashing, assumption: not claimed or RPC error
+            }
+
+            // If bound but not claimed (or unable to verify), provide VC so user can try to claim
+            if (!nftClaimed) {
+                const credentialSubject = {
+                    id: createDidFromAddress(normalizedAddress),
+                    studentId: student.studentId,
+                    name: student.name,
+                    status: "active"
+                };
+                vc = createVerifiableCredential(credentialSubject);
+                vcJwt = await signVerifiableCredential(vc);
+            }
+
             return res.json({
                 success: true,
                 claimed: true,
-                studentId: student.studentId
+                studentId: student.studentId,
+                nftClaimed: nftClaimed,
+                vc: vc,
+                vcJwt: vcJwt
             });
         } else {
             return res.json({
@@ -150,11 +190,12 @@ router.get('/status/:address', [
 /**
  * @route   POST /api/did/verify-and-register
  * @desc    Verify VC and register voter on blockchain
- * @access  Private (User)
+ * @access  Private (student only; token + role user required)
  */
 router.post('/verify-and-register',
     didLimiter,
     authMiddleware,
+    userMiddleware,
     [
         body('userAddress')
             .notEmpty()
@@ -206,16 +247,15 @@ router.post('/verify-and-register',
             const studentId = vc.credentialSubject.studentId;
 
             // Call Blockchain to Register Voter (NOW ONLY MINT NFT)
-            const StudentNFTArtifact = require('../../frontend/src/contracts/StudentNFT.json');
-            const ContractAddress = require('../../frontend/src/contracts/address.json');
+            const VotingSystemArtifact = require('../../frontend/src/contracts/VotingSystem.json');
 
             const provider = new ethers.JsonRpcProvider("http://127.0.0.1:8545");
             // Use Admin Wallet (Owner)
             const privateKey = process.env.ADMIN_PRIVATE_KEY || "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
             const wallet = new ethers.Wallet(privateKey, provider);
 
-            // We only need NFT contract now
-            const nftContract = new ethers.Contract(ContractAddress.StudentNFT, StudentNFTArtifact.abi, wallet);
+            // We only need NFT contract now (VotingSystem handles NFT)
+            const nftContract = new ethers.Contract(process.env.VOTING_SYSTEM_ADDRESS, VotingSystemArtifact.abi, wallet);
 
             // 1. Mint NFT
             // Check if already has NFT to avoid waste/error (Optional but recommended)
