@@ -59,7 +59,13 @@ const corsWhitelist = [
 const isDev = process.env.NODE_ENV !== 'production';
 const isAllowedOrigin = (origin) => {
     if (!origin) return true;
-    if (corsWhitelist.includes(origin)) return true;
+    
+    // Validate exact match or slash differences
+    if (corsWhitelist.some(url => url === origin || url + '/' === origin || url === origin + '/')) return true;
+
+    // Allow railway frontend domains (Very common when deploying Skripsi / side projects to railway)
+    if (origin.endsWith('.up.railway.app') || origin.endsWith('.railway.app')) return true;
+
     if (isDev) {
         try {
             const u = new URL(origin);
@@ -70,6 +76,8 @@ const isAllowedOrigin = (origin) => {
             if (parts[0] === 10) return true; // 10.x.x.x
         } catch (_) { /* invalid URL */ }
     }
+    
+    console.warn(`[CORS] Blocked request from origin: ${origin}`);
     return false;
 };
 
