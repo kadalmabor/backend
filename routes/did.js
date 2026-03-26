@@ -326,16 +326,23 @@ router.post('/verify-and-register',
             try {
                 const txNft = await nftContract.mint(userAddress, studentId, { nonce });
                 console.log("Minting tx sent:", txNft.hash);
-                await txNft.wait();
                 nftTxHash = txNft.hash;
 
-                // Save txHash to database
+                // Save txHash to database immediately
                 if (student) {
                     student.nftTxHash = nftTxHash;
                     await student.save();
                 }
 
-                console.log(`[ON-CHAIN] Minted NFT for: ${userAddress}`);
+                // Fire-and-forget waiting for transaction confirmation
+                txNft.wait()
+                    .then(receipt => {
+                        console.log(`[ON-CHAIN] Minted NFT for: ${userAddress} in block ${receipt.blockNumber}`);
+                    })
+                    .catch(err => {
+                        console.error(`[ON-CHAIN] Minting confirmation failed for ${userAddress}:`, err);
+                    });
+
             } catch (err) {
                 console.error("Minting failed:", err);
                 throw new AppError(`Minting failed: ${err.message}`, 500);
@@ -343,7 +350,7 @@ router.post('/verify-and-register',
 
             res.json({
                 success: true,
-                message: "NFT Minted Successfully",
+                message: "NFT Mint transaction submitted successfully",
                 txHash: nftTxHash, // For frontend compatibility, use NFT hash
                 nftTxHash: nftTxHash
             });

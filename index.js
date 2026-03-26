@@ -29,14 +29,15 @@ const baseWhitelist = process.env.CORS_ORIGINS
 const corsWhitelist = [
     ...baseWhitelist,
     `http://localhost:${PORT}`,
-    `http://127.0.0.1:${PORT}`
+    `http://127.0.0.1:${PORT}`,
+    `https://frontend-production-a2c6.up.railway.app`
 ];
 
 // Development: allow localhost, 127.0.0.1, dan private network (192.168.x.x, 10.x.x.x) di port manapun
 const isDev = process.env.NODE_ENV !== 'production';
 const isAllowedOrigin = (origin) => {
     if (!origin) return true;
-    
+
     // Validate exact match or slash differences
     if (corsWhitelist.some(url => url === origin || url + '/' === origin || url === origin + '/')) return true;
 
@@ -53,7 +54,7 @@ const isAllowedOrigin = (origin) => {
             if (parts[0] === 10) return true; // 10.x.x.x
         } catch (_) { /* invalid URL */ }
     }
-    
+
     console.warn(`[CORS] Blocked request from origin: ${origin}`);
     return false;
 };
