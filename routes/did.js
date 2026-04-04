@@ -300,12 +300,9 @@ router.post('/verify-and-register',
             const VotingSystemArtifact = require('../contracts/VotingSystem.json');
 
             const provider = new ethers.JsonRpcProvider(process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:8545");
-            // Use Admin Wallet (Owner)
-            const isProd = process.env.NODE_ENV === 'production';
-            const privateKey = process.env.ADMIN_PRIVATE_KEY
-                || (!isProd ? "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" : null);
+            const privateKey = process.env.ADMIN_PRIVATE_KEY && String(process.env.ADMIN_PRIVATE_KEY).trim();
             if (!privateKey) {
-                throw new AppError('ADMIN_PRIVATE_KEY is required in production', 500);
+                throw new AppError('ADMIN_PRIVATE_KEY is not configured', 500);
             }
             const wallet = new ethers.Wallet(privateKey, provider);
 

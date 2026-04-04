@@ -151,7 +151,11 @@ router.post('/refresh', [
 
     } catch (err) {
         if (err.name === 'TokenExpiredError' || err.name === 'JsonWebTokenError') {
-            return next(new AppError('Invalid or expired refresh token', 401));
+            // Expected when refresh token expired or secrets rotated — respond without error middleware stack spam
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid or expired refresh token'
+            });
         }
         next(err);
     }

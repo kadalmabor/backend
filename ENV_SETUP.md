@@ -4,11 +4,11 @@ File ini menjelaskan environment variables yang diperlukan untuk backend.
 
 ## Cara Setup
 
-1. Copy file ini ke `.env` di folder `backend/`:
+1. Salin template ke `.env` di folder `backend/`:
    ```bash
-   cp ENV_SETUP.md .env
+   cp .env.example .env
    ```
-   Atau buat file `.env` secara manual.
+   Lalu edit nilai sesuai lingkungan Anda.
 
 2. Isi semua nilai yang diperlukan (lihat contoh di bawah).
 
@@ -57,12 +57,12 @@ JWT_REFRESH_EXPIRE=7d
 - Jangan commit `.env` ke git!
 
 ### Verifiable Credential (VC) Issuer Configuration
-Private key untuk signing Verifiable Credentials:
+Private key 32-byte (hex 64 karakter) untuk signing Verifiable Credentials. Di development boleh memakai kunci Hardhat terpisah atau sama dengan `ADMIN_PRIVATE_KEY` (jangan dipakai di mainnet):
 ```env
-VC_ISSUER_PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000001
+VC_ISSUER_PRIVATE_KEY=0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
 ```
 
-**PENTING**: Gunakan private key yang aman di production!
+**PENTING**: Di production gunakan kunci khusus yang tidak pernah ter-commit ke repositori.
 
 ### Blockchain Configuration
 ```env

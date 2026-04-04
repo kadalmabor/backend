@@ -2,26 +2,19 @@ const { Server } = require("socket.io");
 const { ethers } = require("ethers");
 const fs = require("fs");
 const path = require("path");
+const { createCorsPolicy } = require("../config/corsPolicy");
 
 let io;
 let pollingIntervalId = null;
 
-// Same whitelist as server.js - CORS_ORIGINS or FRONTEND_URL
-const getCorsOrigins = () => {
-    if (process.env.CORS_ORIGINS) {
-        return process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean);
-    }
-    return [process.env.FRONTEND_URL || "http://localhost:3000"];
-};
-
-const initializeSocket = (server) => {
-    io = new Server(server, {
-        cors: {
-            origin: getCorsOrigins(),
-            methods: ["GET", "POST", "OPTIONS"],
-            credentials: true
-        }
-    });
+/**
+ * @param {import('http').Server} server
+ * @param {{ cors?: object }} [options] - Prefer `socketIoCors` from createCorsPolicy (same rules as Express)
+ */
+const initializeSocket = (server, options = {}) => {
+    const port = process.env.PORT || 3001;
+    const cors = options.cors ?? createCorsPolicy(port).socketIoCors;
+    io = new Server(server, { cors });
 
     io.on("connection", (socket) => {
         console.log("New User connected via Socket.io:", socket.id);

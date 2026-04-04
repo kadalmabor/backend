@@ -6,10 +6,13 @@
 const { createJWT, verifyJWT, ES256KSigner } = require('did-jwt');
 const { ethers } = require('ethers');
 
-// Load issuer private key from environment
-// In production, this should be stored securely
-const ISSUER_PRIVATE_KEY = process.env.VC_ISSUER_PRIVATE_KEY || 
-    '0x0000000000000000000000000000000000000000000000000000000000000001'; // Default for development
+const getIssuerPrivateKey = () => {
+    const k = process.env.VC_ISSUER_PRIVATE_KEY;
+    if (!k || String(k).trim() === '') {
+        throw new Error('VC_ISSUER_PRIVATE_KEY is not set');
+    }
+    return String(k).trim();
+};
 
 /**
  * Create a Verifiable Credential (VC) according to W3C standard
@@ -76,7 +79,7 @@ const hexToBytes = (hexKey) => {
 const signVerifiableCredential = async (vc, issuerDid = 'did:web:university.edu') => {
     try {
         // Convert hex private key to bytes array
-        const privateKeyBytes = hexToBytes(ISSUER_PRIVATE_KEY);
+        const privateKeyBytes = hexToBytes(getIssuerPrivateKey());
         
         // Create signer from private key bytes
         const signer = ES256KSigner(privateKeyBytes);
@@ -162,7 +165,7 @@ const verifyVerifiableCredential = async (jwt) => {
         }
 
         const expectedIssuerDid = process.env.VC_ISSUER_DID || 'did:web:university.edu';
-        const privateKeyBytes = hexToBytes(ISSUER_PRIVATE_KEY);
+        const privateKeyBytes = hexToBytes(getIssuerPrivateKey());
         const publicKey = getPublicKeyFromPrivate(privateKeyBytes);
 
         const verified = await verifyJWT(jwt, {

@@ -4,62 +4,101 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { authMiddleware, adminMiddleware } = require('../middleware/authMiddleware');
+const { ALLOWED_MIME, validateUploadedImageFile } = require('../utils/imageMagic');
 
-// Ensure uploads directory exists (Railway ephemeral filesystem resets on redeploy)
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
     console.log('📁 Created uploads directory');
 }
 
-// Configure storage
+const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, uploadsDir);
     },
     filename: (req, file, cb) => {
-        // Unique filename: timestamp + random number + extension
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+        const ext = path.extname(file.originalname).toLowerCase() || '.bin';
+        cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    },
 });
 
-// File filter (only images)
 const fileFilter = (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-        cb(null, true);
-    } else {
-        cb(new Error('Not an image! Please upload an image.'), false);
+    if (!ALLOWED_MIME.has(file.mimetype)) {
+        cb(new Error('Hanya JPEG, PNG, GIF, dan WebP yang diizinkan'), false);
+        return;
     }
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_EXT.has(ext)) {
+        cb(new Error('Ekstensi file tidak diizinkan'), false);
+        return;
+    }
+    cb(null, true);
 };
 
 const upload = multer({
-    storage: storage,
-    fileFilter: fileFilter,
+    storage,
+    fileFilter,
     limits: {
-        fileSize: 5 * 1024 * 1024 // 5MB limit
-    }
+        fileSize: 5 * 1024 * 1024,
+    },
 });
 
-// Upload route: admin only (e.g. candidate photos)
-router.post('/', authMiddleware, adminMiddleware, upload.single('image'), (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ success: false, error: 'Please upload a file' });
+router.post('/', authMiddleware, adminMiddleware, (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+        if (err) {
+            if (err instanceof multer.MulterError) {
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(400).json({ success: false, error: 'Ukuran file maksimal 5MB' });
+                }
+                return res.status(400).json({ success: false, error: err.message });
+            }
+            return res.status(400).json({ success: false, error: err.message || 'Upload gagal' });
         }
 
-        // Construct URL using BACKEND_URL env var for production reliability
-        const baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
-        const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+        try {
+            if (!req.file) {
+                return res.status(400).json({ success: false, error: 'Mohon unggah berkas' });
+            }
 
-        res.json({
-            success: true,
-            url: fileUrl,
-            filename: req.file.filename
-        });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
-    }
+            const validation = validateUploadedImageFile(req.file.path);
+            if (!validation.ok) {
+                fs.unlink(req.file.path, () => {});
+                return res.status(400).json({ success: false, error: validation.error });
+            }
+
+            const currentExt = path.extname(req.file.filename).toLowerCase();
+            if (validation.ext && validation.ext !== currentExt) {
+                const dir = path.dirname(req.file.path);
+                const base = path.basename(req.file.filename, path.extname(req.file.filename));
+                const newPath = path.join(dir, base + validation.ext);
+                try {
+                    fs.renameSync(req.file.path, newPath);
+                    req.file.path = newPath;
+                    req.file.filename = path.basename(newPath);
+                } catch (renameErr) {
+                    fs.unlink(req.file.path, () => {});
+                    return res.status(500).json({ success: false, error: 'Gagal menyimpan berkas' });
+                }
+            }
+
+            const baseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+            const fileUrl = `${baseUrl}/uploads/${req.file.filename}`;
+
+            res.json({
+                success: true,
+                url: fileUrl,
+                filename: req.file.filename,
+            });
+        } catch (e) {
+            if (req.file?.path) {
+                fs.unlink(req.file.path, () => {});
+            }
+            res.status(500).json({ success: false, error: e.message || 'Upload gagal' });
+        }
+    });
 });
 
 module.exports = router;
